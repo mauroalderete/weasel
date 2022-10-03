@@ -8,8 +8,9 @@ import (
 
 	_ "embed"
 
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/mauroalderete/weasel/wallet"
+	"github.com/bgadrian/go-mnemonic/bip39"
+	"github.com/mauroalderete/weasel/client"
+	"github.com/mauroalderete/weasel/genwallet"
 )
 
 //go:generate build/get_version.sh
@@ -20,36 +21,48 @@ func main() {
 
 	const server = "https://cloudflare-eth.com"
 
-	fmt.Printf("Connecting... ")
-	client, err := ethclient.Dial(server)
+	Look(server)
+
+	m, err := bip39.NewMnemonicRandom(128, "")
 	if err != nil {
-		fmt.Printf("[FAIL]\n")
-		log.Fatalf("failed to connect to ethclient: %v", err)
+		log.Fatal("Whoops something went wrong to make mnemonic generator", err)
 	}
 
-	_ = client
-	fmt.Printf("[OK]\n")
-
-	fmt.Printf("Opening wallet... ")
-	w, err := wallet.New("0x71c7656ec7ab88b098defb751b7401b5f6d8976f", client)
+	password, err := m.GetSentence()
 	if err != nil {
-		fmt.Printf("[FAIL]\n")
-		log.Fatalf("failed to instance a new wallet: %v", err)
+		log.Panic(err)
+	}
+	fmt.Println(password)
+
+	fmt.Printf("Bye\n")
+}
+
+func Look(server string) {
+	c := &client.Client{}
+	err := c.Connect(server)
+	if err != nil {
+		log.Fatalf("failed to connect to ethclient: %v", err)
+	}
+	defer c.Close()
+
+	w, err := genwallet.RandomWallet()
+	if err != nil {
+		log.Fatal("failed instance a new random wallet", err)
+	}
+
+	err = w.Bind(c.Client())
+	if err != nil {
+		log.Fatalf("failed to bind client to wallet: %v", err)
 	}
 
 	err = w.Update()
 	if err != nil {
-		fmt.Printf("[FAIL]\n")
-		log.Fatalf("failed to open the wallet with address %s: %v", w.Address().Hex(), err)
+		log.Fatalf("failed to update wallet info: %v", err)
 	}
-
-	fmt.Printf("[OK]\n\n")
 
 	fmt.Printf("Address: %s\n", w.Address().Hex())
 	fmt.Printf("Balance: %sWEI\n", w.Balance().Wei().String())
 	fmt.Printf("Balance: %sETH\n", w.Balance().Eth().String())
 	fmt.Printf("Pending balance: %sWEI\n", w.PendingBalance().Wei().String())
 	fmt.Printf("Pending balance: %sETH\n", w.PendingBalance().Eth().String())
-
-	fmt.Printf("Bye\n")
 }
