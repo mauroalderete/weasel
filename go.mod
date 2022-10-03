@@ -6,6 +6,7 @@ require github.com/ethereum/go-ethereum v1.10.25
 
 require (
 	github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6 // indirect
+	github.com/bgadrian/go-mnemonic v0.0.0-20170924142112-3188dc747a1b
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
 	github.com/deckarep/golang-set v1.8.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
