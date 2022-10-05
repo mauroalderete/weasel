@@ -5,6 +5,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"strconv"
+	"sync"
+	"syscall"
 
 	"github.com/mauroalderete/weasel/client"
 	"github.com/mauroalderete/weasel/genwallet"
@@ -38,14 +43,68 @@ func init() {
 
 func runMain(cmd *cobra.Command, args []string) error {
 
+	v, err := strconv.ParseInt(cmd.Flag("thread").Value.String(), 10, 32)
+	if err != nil {
+		return fmt.Errorf("thread argument must be a integer value, currently is %s", cmd.Flag("thread").Value.String())
+	}
+	threads := int(v)
+
 	gateway := cmd.Flag("gateway").Value.String()
 
-	err := Search(gateway)
-	if err != nil {
-		return fmt.Errorf("failed execute search: %v", err)
+	termsignal := make(chan os.Signal, 1)
+	signal.Notify(termsignal, syscall.SIGINT, syscall.SIGTERM)
+
+	stopsignal := make(chan bool, 1)
+	errorsignal := make(chan error, 1)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < threads; i++ {
+		wg.Add(1)
+		go RunSearcher(i, gateway, stopsignal, errorsignal, &wg)
 	}
 
-	return nil
+	var someerror error
+	select {
+	case sig := <-termsignal:
+		{
+			fmt.Printf("received signal: %v\n", sig)
+		}
+	case err := <-errorsignal:
+		{
+			someerror = err
+		}
+	}
+
+	fmt.Printf("send stop signal...\n")
+	for i := 0; i < threads; i++ {
+		stopsignal <- true
+	}
+	fmt.Printf("awaiting just all terminate correctly...\n")
+	wg.Wait()
+	fmt.Printf("exiting\n")
+
+	return someerror
+}
+
+func RunSearcher(idx int, gateway string, stopsignal chan bool, errsignal chan error, wg *sync.WaitGroup) {
+	defer wg.Done()
+loop:
+	for {
+		select {
+		case <-stopsignal:
+			{
+				break loop
+			}
+		default:
+			err := Search(gateway)
+			if err != nil {
+				errsignal <- fmt.Errorf("error in %d thread: %v", idx, err)
+			}
+		}
+	}
+
+	fmt.Printf("[%d]: end\n", idx)
 }
 
 func Search(server string) error {
