@@ -8,11 +8,13 @@ import (
 
 type Client struct {
 	client *ethclient.Client
+	url    string
 }
 
-func (c *Client) Connect(server string) error {
+func (c *Client) Connect(url string) error {
 
-	client, err := ethclient.Dial(server)
+	c.url = url
+	client, err := ethclient.Dial(c.url)
 	if err != nil {
 		return fmt.Errorf("failed to connect to ethclient: %v", err)
 	}
@@ -32,4 +34,8 @@ func (c *Client) Close() {
 
 func (c *Client) Client() *ethclient.Client {
 	return c.client
+}
+
+func (c *Client) Url() string {
+	return c.url
 }

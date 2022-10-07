@@ -6,6 +6,8 @@ package cmd
 import (
 	"os"
 
+	"log"
+
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +24,7 @@ Each account with some activity is stored to make subsequent actions.`,
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
+		log.Fatalf("[FAIL]: %v", err)
 		os.Exit(1)
 	}
 }
