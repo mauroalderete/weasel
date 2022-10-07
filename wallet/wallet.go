@@ -2,97 +2,46 @@ package wallet
 
 import (
 	"context"
-	"crypto"
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	gethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/mauroalderete/weasel/client"
 	"github.com/mauroalderete/weasel/coin"
+	"github.com/mauroalderete/weasel/wallet/walletkey"
 )
 
-type WalletPrivateKey struct {
-	key      ecdsa.PrivateKey
-	keyBytes []byte
-	keyHex   string
-}
-
-func (wpk *WalletPrivateKey) Key() ecdsa.PrivateKey {
-	return wpk.key
-}
-
-func (wpk *WalletPrivateKey) Bytes() []byte {
-	return wpk.keyBytes
-}
-
-func (wpk *WalletPrivateKey) Hex() string {
-	return wpk.keyHex
-}
-
-func (wpk *WalletPrivateKey) SetKey(key ecdsa.PrivateKey) {
-	wpk.key = key
-	wpk.keyBytes = gethcrypto.FromECDSA(&wpk.key)
-	wpk.keyHex = hexutil.Encode(wpk.keyBytes[2:])
-}
-
-type WalletPublicKey struct {
-	key      crypto.PublicKey
-	keyBytes []byte
-	keyHex   string
-}
-
-func (wpk *WalletPublicKey) Key() crypto.PublicKey {
-	return wpk.key
-}
-
-func (wpk *WalletPublicKey) Bytes() []byte {
-	return wpk.keyBytes
-}
-
-func (wpk *WalletPublicKey) Hex() string {
-	return wpk.keyHex
-}
-
-func (wpk *WalletPublicKey) SetKey(key crypto.PublicKey) error {
-	publicKeyECDSA, ok := key.(*ecdsa.PublicKey)
-	if !ok {
-		return fmt.Errorf("error casting public key to ECDSA")
-	}
-	wpk.key = key
-	wpk.keyBytes = gethcrypto.FromECDSAPub(publicKeyECDSA)
-	wpk.keyHex = hexutil.Encode(wpk.keyBytes[2:])
-
-	return nil
-}
-
 type Wallet struct {
-	client         *ethclient.Client
+	gateway        *client.Client
 	address        common.Address
-	privateKey     WalletPrivateKey
-	publicKey      WalletPublicKey
+	privateKey     walletkey.PrivateKey
+	publicKey      walletkey.PublicKey
 	balance        coin.Coin
 	pendingBalance coin.Coin
 }
 
-func (w *Wallet) Bind(client *ethclient.Client) error {
+func (w *Wallet) Bind(client *client.Client) error {
 	if client == nil {
 		return fmt.Errorf("client is required")
 	}
 
-	w.client = client
+	w.gateway = client
 
 	return nil
 }
 
-func (w *Wallet) PrivateKey() WalletPrivateKey {
-	return w.privateKey
+func (w *Wallet) PrivateKey() *walletkey.PrivateKey {
+	pk := w.privateKey
+	return &pk
 }
 
-func (w *Wallet) PublicKey() WalletPublicKey {
-	return w.publicKey
+func (w *Wallet) PublicKey() *walletkey.PublicKey {
+	pk := w.publicKey
+	return &pk
 }
 
 func (w *Wallet) Address() common.Address {
@@ -126,11 +75,11 @@ func (w *Wallet) Update() error {
 
 func (w *Wallet) QueryBalance(blockNumber *big.Int) error {
 
-	if w.client == nil {
+	if w.gateway == nil {
 		return fmt.Errorf("wallet is not connect to a client")
 	}
 
-	balance, err := w.client.BalanceAt(context.Background(), w.address, blockNumber)
+	balance, err := w.gateway.Client().BalanceAt(context.Background(), w.address, blockNumber)
 	if err != nil {
 		return fmt.Errorf("failed to query balance from account %s: %v", w.address.Hex(), err)
 	}
@@ -145,11 +94,11 @@ func (w *Wallet) QueryBalance(blockNumber *big.Int) error {
 
 func (w *Wallet) QueryPendingBalance() error {
 
-	if w.client == nil {
+	if w.gateway == nil {
 		return fmt.Errorf("wallet is not connect to a client")
 	}
 
-	balance, err := w.client.PendingBalanceAt(context.Background(), w.address)
+	balance, err := w.gateway.Client().PendingBalanceAt(context.Background(), w.address)
 	if err != nil {
 		return fmt.Errorf("failed to query pending balance from account %s: %v", w.address.Hex(), err)
 	}
@@ -160,6 +109,29 @@ func (w *Wallet) QueryPendingBalance() error {
 	}
 
 	return nil
+}
+
+func (w *Wallet) QueryHeader(number *big.Int) (*types.Header, error) {
+	header, err := w.gateway.Client().HeaderByNumber(context.Background(), number)
+	if err == ethereum.NotFound {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query header by block number %d: %v", number, err)
+	}
+
+	return header, nil
+}
+
+func (w *Wallet) Block(number *big.Int) (*types.Block, error) {
+
+	block, err := w.gateway.Client().BlockByNumber(context.Background(), number)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query a block by number %d: %v", number, err)
+	}
+
+	return block, nil
 }
 
 func NewFromPrivateKey(privateKey ecdsa.PrivateKey) (*Wallet, error) {
@@ -174,11 +146,11 @@ func NewFromPrivateKey(privateKey ecdsa.PrivateKey) (*Wallet, error) {
 	w := &Wallet{}
 	w.address = address
 
-	a := WalletPrivateKey{}
+	a := walletkey.PrivateKey{}
 	a.SetKey(privateKey)
 	w.privateKey = a
 
-	b := WalletPublicKey{}
+	b := walletkey.PublicKey{}
 	err := b.SetKey(publicKey)
 	if err != nil {
 		return nil, fmt.Errorf("error store public key: %v", err)
