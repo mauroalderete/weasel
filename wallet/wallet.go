@@ -24,6 +24,10 @@ type Wallet struct {
 	pendingBalance coin.Coin
 }
 
+func (w *Wallet) String() string {
+	return fmt.Sprintf("{%s}[%s](%f;%f)", w.privateKey.Hex(), w.publicKey.Hex(), w.balance.Eth(), w.pendingBalance.Eth())
+}
+
 func (w *Wallet) Bind(client *client.Client) error {
 	if client == nil {
 		return fmt.Errorf("client is required")
