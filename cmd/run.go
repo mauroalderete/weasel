@@ -49,6 +49,10 @@ func init() {
 	runCmd.Flags().BoolP("stop-search-errors", "e", false, "Stop all process when an error in is detected in any thread.")
 	runCmd.Flags().StringP("match-file", "m", "", "Filepath to store in json format all wallets matched.")
 	runCmd.Flags().StringP("unmatch-file", "u", "", "Filepath to store in json format all wallets unmatched.")
+	runCmd.Flags().BoolP("match-verbose", "", false, "Show in stdout the wallets matched.")
+	runCmd.Flags().BoolP("unmatch-verbose", "", false, "Show in stdout the wallets unmatched.")
+	runCmd.Flags().BoolP("info-verbose", "", false, "Show in stdout info util about the process.")
+	runCmd.Flags().BoolP("log-verbose", "", false, "Show in stdout the verbose execution log.")
 
 	runCmd.RunE = runMain
 }
@@ -68,10 +72,15 @@ func runMain(cmd *cobra.Command, args []string) error {
 	matchFilename := cmd.Flag("match-file").Value.String()
 	unmatchFilename := cmd.Flag("unmatch-file").Value.String()
 
+	matchVerbose := cmd.Flag("match-verbose").Value.String() == "true"
+	unmatchVerbose := cmd.Flag("unmatch-verbose").Value.String() == "true"
+	// infoVerbose := cmd.Flag("info-verbose").Value.String() == "true"
+	// logVerbose := cmd.Flag("log-verbose").Value.String() == "true"
+
 	// preparo los repositorios
 	log.Printf("Preparing repositories...")
 	repoHandler := RepositoryHandle{}
-	err = repoHandler.Start(matchFilename, unmatchFilename)
+	err = repoHandler.Start(matchFilename, unmatchFilename, matchVerbose, unmatchVerbose)
 	if err != nil {
 		log.Printf("[FAIL]")
 		return fmt.Errorf("error to prepare repositories: %v", err)
@@ -202,24 +211,28 @@ func (r *RepositoryHandle) Close() {
 	}
 }
 
-func (r *RepositoryHandle) Start(matchFilename string, unmatchFilename string) error {
+func (r *RepositoryHandle) Start(matchFilename string, unmatchFilename string, matchVerbose bool, unmatchVerbose bool) error {
 	//prepare pools
 	r.matchs = make([]repository.Repository, 0)
 	r.unmatchs = make([]repository.Repository, 0)
 
 	// salida estandar para match
-	stdoutMatch, err := stdoutrepository.New(VERDE)
-	if err != nil {
-		return fmt.Errorf("failed to instance a FileRepository to store match wallets: %v", err)
+	if matchVerbose {
+		stdoutMatch, err := stdoutrepository.New(VERDE)
+		if err != nil {
+			return fmt.Errorf("failed to instance a FileRepository to store match wallets: %v", err)
+		}
+		r.matchs = append(r.matchs, stdoutMatch)
 	}
 
-	stdoutUnmatch, err := stdoutrepository.New(ROJO)
-	if err != nil {
-		return fmt.Errorf("failed to instance a FileRepository to store match wallets: %v", err)
+	// salida estandar para unmatch
+	if unmatchVerbose {
+		stdoutUnmatch, err := stdoutrepository.New(ROJO)
+		if err != nil {
+			return fmt.Errorf("failed to instance a FileRepository to store match wallets: %v", err)
+		}
+		r.unmatchs = append(r.unmatchs, stdoutUnmatch)
 	}
-
-	r.matchs = append(r.matchs, stdoutMatch)
-	r.unmatchs = append(r.unmatchs, stdoutUnmatch)
 
 	// json file to match wallets
 	if len(matchFilename) != 0 {
@@ -227,7 +240,6 @@ func (r *RepositoryHandle) Start(matchFilename string, unmatchFilename string) e
 		if err != nil {
 			return fmt.Errorf("failed to instance a FileRepository to store match wallets in %s: %v", matchFilename, err)
 		}
-
 		r.matchs = append(r.matchs, fmatch)
 	}
 
