@@ -46,6 +46,7 @@ func init() {
 
 	runCmd.Flags().Int32P("thread", "t", 1, "Number of threads >0 to execute. Each thread handle his own connection and own search.")
 	runCmd.Flags().StringP("gateway", "g", "https://cloudflare-eth.com", "Ethereum gateway to connect.")
+	runCmd.Flags().BoolP("stop-search-errors", "e", false, "Stop all process when an error in is detected in any thread.")
 
 	runCmd.RunE = runMain
 }
@@ -61,6 +62,7 @@ func runMain(cmd *cobra.Command, args []string) error {
 	}
 	threads := int(v)
 	gateway := cmd.Flag("gateway").Value.String()
+	stopSearchErrors := cmd.Flag("stop-search-errors").Value.String() == "true"
 
 	// preparo los repositorios
 	log.Printf("Preparing repositories...")
@@ -92,15 +94,22 @@ func runMain(cmd *cobra.Command, args []string) error {
 	log.Printf("Ready!")
 	// espero hasta que finalice
 	var someerror error
-	select {
-	case sig := <-termsignal:
-		{
-			log.Printf("Signal received: %v\n", sig)
-		}
-	case err := <-errorsignal:
-		{
-			log.Printf("Something was wrong: %v\n", err)
-			someerror = err
+mainLoop:
+	for {
+		select {
+		case sig := <-termsignal:
+			{
+				log.Printf("Signal received: %v\n", sig)
+				break mainLoop
+			}
+		case err := <-errorsignal:
+			{
+				log.Printf("Something was wrong: %v\n", err)
+				if stopSearchErrors {
+					someerror = err
+					break mainLoop
+				}
+			}
 		}
 	}
 
