@@ -47,6 +47,8 @@ func init() {
 	runCmd.Flags().Int32P("thread", "t", 1, "Number of threads >0 to execute. Each thread handle his own connection and own search.")
 	runCmd.Flags().StringP("gateway", "g", "https://cloudflare-eth.com", "Ethereum gateway to connect.")
 	runCmd.Flags().BoolP("stop-search-errors", "e", false, "Stop all process when an error in is detected in any thread.")
+	runCmd.Flags().StringP("match-file", "m", "", "Filepath to store in json format all wallets matched.")
+	runCmd.Flags().StringP("unmatch-file", "u", "", "Filepath to store in json format all wallets unmatched.")
 
 	runCmd.RunE = runMain
 }
@@ -63,11 +65,13 @@ func runMain(cmd *cobra.Command, args []string) error {
 	threads := int(v)
 	gateway := cmd.Flag("gateway").Value.String()
 	stopSearchErrors := cmd.Flag("stop-search-errors").Value.String() == "true"
+	matchFilename := cmd.Flag("match-file").Value.String()
+	unmatchFilename := cmd.Flag("unmatch-file").Value.String()
 
 	// preparo los repositorios
 	log.Printf("Preparing repositories...")
 	repoHandler := RepositoryHandle{}
-	err = repoHandler.Start()
+	err = repoHandler.Start(matchFilename, unmatchFilename)
 	if err != nil {
 		log.Printf("[FAIL]")
 		return fmt.Errorf("error to prepare repositories: %v", err)
@@ -198,7 +202,7 @@ func (r *RepositoryHandle) Close() {
 	}
 }
 
-func (r *RepositoryHandle) Start() error {
+func (r *RepositoryHandle) Start(matchFilename string, unmatchFilename string) error {
 	//prepare pools
 	r.matchs = make([]repository.Repository, 0)
 	r.unmatchs = make([]repository.Repository, 0)
@@ -214,23 +218,27 @@ func (r *RepositoryHandle) Start() error {
 		return fmt.Errorf("failed to instance a FileRepository to store match wallets: %v", err)
 	}
 
+	r.matchs = append(r.matchs, stdoutMatch)
+	r.unmatchs = append(r.unmatchs, stdoutUnmatch)
+
 	// json file to match wallets
-	fmatch, err := filerepository.New("match.json")
-	if err != nil {
-		return fmt.Errorf("failed to instance a FileRepository to store match wallets: %v", err)
+	if len(matchFilename) != 0 {
+		fmatch, err := filerepository.New(matchFilename)
+		if err != nil {
+			return fmt.Errorf("failed to instance a FileRepository to store match wallets in %s: %v", matchFilename, err)
+		}
+
+		r.matchs = append(r.matchs, fmatch)
 	}
 
 	// json file to unmatch wallets
-	funmatch, err := filerepository.New("unmatch.json")
-	if err != nil {
-		return fmt.Errorf("failed to instance a FileRepository to store unmatch wallets: %v", err)
+	if len(unmatchFilename) != 0 {
+		funmatch, err := filerepository.New(unmatchFilename)
+		if err != nil {
+			return fmt.Errorf("failed to instance a FileRepository to store unmatch wallets in %s: %v", unmatchFilename, err)
+		}
+		r.unmatchs = append(r.unmatchs, funmatch)
 	}
-
-	// adding repositories in pool
-	r.matchs = append(r.matchs, stdoutMatch)
-	r.matchs = append(r.matchs, fmatch)
-	r.unmatchs = append(r.unmatchs, stdoutUnmatch)
-	r.unmatchs = append(r.unmatchs, funmatch)
 
 	return nil
 }
