@@ -15,9 +15,11 @@ ENV GOPATH=/go
 ENV APPDIR=/app
 ENV GOSRC=${GOPATH}/src
 ENV THREAD=2
+ENV GATEWAY=https://cloudflare-eth.com
 
+WORKDIR ${APPDIR}/store
 WORKDIR ${APPDIR}
 
 COPY --from=builder --chown=root:root ${GOPATH}/src/weasel/weasel /usr/local/bin/weasel
 
-CMD [ "sh", "-c", "weasel run -t ${THREAD} --logfile /var/log/weasel.log --match-verbose --unmatch-verbose --info-verbose --match-file ${APPDIR}/match.json" ]
+CMD [ "sh", "-c", "weasel run -t ${THREAD} -g ${GATEWAY} --logfile /var/log/weasel.log --match-verbose --unmatch-verbose --info-verbose --match-file ${APPDIR}/store/match.json" ]
