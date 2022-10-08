@@ -6,11 +6,15 @@ package cmd
 import (
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"os/signal"
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
+
+	"github.com/fatih/color"
 
 	"github.com/mauroalderete/weasel/pathfinder"
 	"github.com/mauroalderete/weasel/wallet"
@@ -74,13 +78,20 @@ func runMain(cmd *cobra.Command, args []string) error {
 
 	matchVerbose := cmd.Flag("match-verbose").Value.String() == "true"
 	unmatchVerbose := cmd.Flag("unmatch-verbose").Value.String() == "true"
-	// infoVerbose := cmd.Flag("info-verbose").Value.String() == "true"
+	infoVerbose := cmd.Flag("info-verbose").Value.String() == "true"
 	// logVerbose := cmd.Flag("log-verbose").Value.String() == "true"
+
+	var infoSummary *Summary
+
+	if infoVerbose {
+		infoSummary = &Summary{}
+		infoSummary.Start()
+	}
 
 	// preparo los repositorios
 	log.Printf("Preparing repositories...")
 	repoHandler := RepositoryHandle{}
-	err = repoHandler.Start(matchFilename, unmatchFilename, matchVerbose, unmatchVerbose)
+	err = repoHandler.Start(matchFilename, unmatchFilename, matchVerbose, unmatchVerbose, infoSummary)
 	if err != nil {
 		log.Printf("[FAIL]")
 		return fmt.Errorf("error to prepare repositories: %v", err)
@@ -117,6 +128,9 @@ mainLoop:
 			}
 		case err := <-errorsignal:
 			{
+				if infoSummary != nil {
+					infoSummary.AddError()
+				}
 				log.Printf("Something was wrong: %v\n", err)
 				if stopSearchErrors {
 					someerror = err
@@ -164,7 +178,6 @@ loop:
 			if err != nil {
 				errsignal <- fmt.Errorf("error in %d thread: %v", idx, err)
 			} else {
-
 				err := repoHandler.Save(*pf.Wallet(), pf.Match())
 				if err != nil {
 					errsignal <- fmt.Errorf("error saving match wallet in %d thread: %v", idx, err)
@@ -176,12 +189,79 @@ loop:
 	log.Printf("thread [%d]: Done\n", idx)
 }
 
+type Summary struct {
+	step        *big.Int
+	match       *big.Int
+	unmatch     *big.Int
+	errors      *big.Int
+	starttime   time.Time
+	spinner     []string
+	spinnerIter int
+	tint        *color.Color
+}
+
+func (s *Summary) Start() {
+	s.step = big.NewInt(1)
+	s.match = big.NewInt(0)
+	s.unmatch = big.NewInt(0)
+	s.errors = big.NewInt(0)
+	s.starttime = time.Now()
+	s.spinner = []string{"🌑 ", "🌒 ", "🌓 ", "🌔 ", "🌕 ", "🌖 ", "🌗 ", "🌘 "}
+	s.spinnerIter = 0
+	s.tint = color.New(color.FgBlue)
+}
+
+func (s *Summary) PreparePrint() {
+	fmt.Printf("\r")
+}
+
+func (s *Summary) AddError() {
+	s.errors.Add(s.errors, s.step)
+}
+
+func (s *Summary) Print(match bool) {
+
+	s.spinnerIter++
+	if s.spinnerIter == len(s.spinner) {
+		s.spinnerIter = 0
+	}
+
+	if match {
+		s.match.Add(s.match, s.step)
+	} else {
+		s.unmatch.Add(s.unmatch, s.step)
+	}
+
+	total := big.NewInt(0)
+	total.Add(s.match, s.unmatch)
+
+	duration := time.Since(s.starttime)
+
+	rate := big.NewFloat(0)
+	rate = rate.Quo(big.NewFloat(float64(total.Int64())), big.NewFloat(duration.Seconds()))
+
+	fmt.Printf("\r%s", s.spinner[s.spinnerIter])
+
+	color.New(color.FgBlue).Add(color.BgBlue).Printf(" ")
+	color.New(color.FgBlack).Add(color.BgBlue).Printf("match=%d", s.match)
+	color.New(color.FgBlue).Add(color.BgHiBlack).Printf("")
+
+	color.New(color.FgWhite).Add(color.BgHiBlack).Printf(" unmatch=%d  total=%d  errors=%d  rate=%.2fw/s  duration=%s", s.unmatch, total, s.errors, rate, duration)
+	color.New(color.FgHiBlack).Printf("")
+}
+
 type RepositoryHandle struct {
 	matchs   []repository.Repository
 	unmatchs []repository.Repository
+	sum      *Summary
 }
 
 func (r *RepositoryHandle) Save(w wallet.Wallet, match bool) error {
+	// prefix summary
+	if r.sum != nil {
+		r.sum.PreparePrint()
+	}
+
 	if match {
 		for _, v := range r.matchs {
 			err := v.Save(w)
@@ -198,6 +278,11 @@ func (r *RepositoryHandle) Save(w wallet.Wallet, match bool) error {
 		}
 	}
 
+	// print summary
+	if r.sum != nil {
+		r.sum.Print(match)
+	}
+
 	return nil
 }
 
@@ -211,7 +296,10 @@ func (r *RepositoryHandle) Close() {
 	}
 }
 
-func (r *RepositoryHandle) Start(matchFilename string, unmatchFilename string, matchVerbose bool, unmatchVerbose bool) error {
+func (r *RepositoryHandle) Start(matchFilename string, unmatchFilename string, matchVerbose bool, unmatchVerbose bool, summary *Summary) error {
+	//prepare summary
+	r.sum = summary
+
 	//prepare pools
 	r.matchs = make([]repository.Repository, 0)
 	r.unmatchs = make([]repository.Repository, 0)
