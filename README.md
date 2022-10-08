@@ -4,7 +4,7 @@ Search wallets with balance positive from randomly private key.
 # Use
 
 ```sh
-docker run mauroalderete/weasel:latest -e THREAD=10 -v $HOME/weasel.match.json:/app/match.json
+docker run mauroalderete/weasel:latest -e THREAD=10 -e GATEWAY=https://cloudflare-eth.com -v $HOME/weasel/store:/app/store
 ```
 
 # Docker compose
@@ -15,11 +15,11 @@ version: "3.9"
 services:
   weasel:
     image: mauroalderete/weasel:latest
-    restart: always
     volumes:
-      - $HOME/weasel.match.json:/app/match.json
-    environments:
+      - $HOME/weasel/store:/app/store 
+    environment:
       - THREAD=1
+        GATEWAY=https://cloudflare-eth.com
 ```
 
 ## references
