@@ -16,6 +16,7 @@ import (
 
 	"github.com/fatih/color"
 
+	"github.com/mauroalderete/weasel/logger"
 	"github.com/mauroalderete/weasel/pathfinder"
 	"github.com/mauroalderete/weasel/wallet"
 	"github.com/mauroalderete/weasel/wallet/repository"
@@ -57,11 +58,21 @@ func init() {
 	runCmd.Flags().BoolP("unmatch-verbose", "", false, "Show in stdout the wallets unmatched.")
 	runCmd.Flags().BoolP("info-verbose", "", false, "Show in stdout info util about the process.")
 	runCmd.Flags().BoolP("log-verbose", "", false, "Show in stdout the verbose execution log.")
+	runCmd.Flags().StringP("logfile", "", "", "Filepath to store the execution log.")
 
 	runCmd.RunE = runMain
 }
 
 func runMain(cmd *cobra.Command, args []string) error {
+
+	logfile := cmd.Flag("logfile").Value.String()
+	logVerbose := cmd.Flag("log-verbose").Value.String() == "true"
+
+	ll, err := logger.New(logfile, logVerbose)
+	if err != nil {
+		return fmt.Errorf("error pereparing log system: %v", err)
+	}
+	log.SetOutput(ll)
 
 	log.Printf("Verifing arguments...")
 	// reviso los argumentos
@@ -79,7 +90,6 @@ func runMain(cmd *cobra.Command, args []string) error {
 	matchVerbose := cmd.Flag("match-verbose").Value.String() == "true"
 	unmatchVerbose := cmd.Flag("unmatch-verbose").Value.String() == "true"
 	infoVerbose := cmd.Flag("info-verbose").Value.String() == "true"
-	// logVerbose := cmd.Flag("log-verbose").Value.String() == "true"
 
 	var infoSummary *Summary
 
@@ -176,6 +186,9 @@ loop:
 		default:
 			err := pf.Search()
 			if err != nil {
+				if pf.Wallet() != nil {
+					log.Printf("wallet failed: %s", pf.Wallet())
+				}
 				errsignal <- fmt.Errorf("error in %d thread: %v", idx, err)
 			} else {
 				err := repoHandler.Save(*pf.Wallet(), pf.Match())
