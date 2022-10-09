@@ -17,6 +17,7 @@ ENV GOSRC=${GOPATH}/src
 ENV THREAD=2
 ENV GATEWAY=https://cloudflare-eth.com
 
+WORKDIR /var/log/weasel
 WORKDIR ${APPDIR}/store
 WORKDIR ${APPDIR}
 
